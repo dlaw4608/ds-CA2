@@ -62,7 +62,7 @@ function sendEmailParams({ name, email, message }: ContactDetails) {
       },
       Subject: {
         Charset: "UTF-8",
-        Data: `New image Upload`,
+        Data: `No New image Upload - Error`,
       },
     },
     Source: SES_EMAIL_FROM,

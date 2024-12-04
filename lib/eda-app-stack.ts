@@ -10,7 +10,7 @@ import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 
-import { DynamoDB, DynamoDBClient } from "@aws-sdk/client-dynamodb";
+
 import { Construct } from "constructs";
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 
@@ -69,6 +69,7 @@ export class EDAAppStack extends cdk.Stack {
       memorySize: 128,
       environment: {
         DLQ_URL: deadLetterQueue.queueUrl,
+        TABLE_NAME: imageTable.tableName
       }
 
     }
@@ -98,7 +99,9 @@ export class EDAAppStack extends cdk.Stack {
       new subs.LambdaSubscription(mailerFn)
     );
     
-  
+    newImageTopic.addSubscription(
+      new subs.SqsSubscription(imageProcessQueue)
+    )
  
  // SQS --> Lambda
   const newImageEventSource = new events.SqsEventSource(imageProcessQueue, {
@@ -106,13 +109,20 @@ export class EDAAppStack extends cdk.Stack {
     maxBatchingWindow: cdk.Duration.seconds(5),
   });
 
+  const newImageEventSourceDLQ = new events.SqsEventSource(deadLetterQueue, {
+    batchSize: 5,
+    maxBatchingWindow: cdk.Duration.seconds(5),
+  });
+
 
   processImageFn.addEventSource(newImageEventSource);
+  rejectMailerFn.addEventSource(newImageEventSourceDLQ)
 
 
   // Permissions
 
   imagesBucket.grantRead(processImageFn);
+  imageTable.grantReadWriteData(processImageFn);
 
   mailerFn.addToRolePolicy(
     new iam.PolicyStatement({
@@ -125,6 +135,28 @@ export class EDAAppStack extends cdk.Stack {
       resources: ["*"],
     })
   );
+
+  rejectMailerFn.addToRolePolicy(
+    new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        "ses:SendEmail",
+        "ses:SendRawEmail",
+        "ses:SendTemplatedEmail",
+      ],
+      resources: ["*"],
+    })
+  );
+
+  processImageFn.addToRolePolicy(
+    new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        "sqs:sendmessage"
+      ],
+      resources: ["*"],
+    })
+  )
 
   
   // Output

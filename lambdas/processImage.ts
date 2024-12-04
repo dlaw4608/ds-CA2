@@ -1,5 +1,6 @@
 /* eslint-disable import/extensions, import/no-absolute-path */
 import { SQSHandler } from "aws-lambda";
+import {PutItemCommand, PutItemCommandInput, DynamoDBClient} from '@aws-sdk/client-dynamodb'
 import {
   GetObjectCommand,
   PutObjectCommandInput,
@@ -17,6 +18,8 @@ import {
 const sqs = new SQSClient();
 const s3 = new S3Client();
 const DLQ_URL = process.env.DLQ_URL;
+const dynamodbClient = new DynamoDBClient();
+const TABLE_NAME = process.env.TABLE_NAME
 
 export const handler: SQSHandler = async (event) => {
   console.log("Event ", JSON.stringify(event));
@@ -40,7 +43,7 @@ export const handler: SQSHandler = async (event) => {
           };
           origimage = await s3.send(new GetObjectCommand(params));
 
-          if (!srcKey.endsWith('.jpeg') || !srcKey.endsWith('.png')) {
+          if (!srcKey.endsWith('.jpeg') && !srcKey.endsWith('.png')) {
             // pass message to dlq
             console.log(`Unsupported file type: ${srcKey}`);
             const dlqMessageParams: SendMessageCommandInput = {
@@ -53,11 +56,21 @@ export const handler: SQSHandler = async (event) => {
             };
             await sqs.send(new SendMessageCommand(dlqMessageParams));
             console.log(`Message sent to DLQ for file: ${srcKey}`);
+          } else {
+            // Add image to DynamoDB Table if valid file type
+            const imageTableRequestParams: PutItemCommandInput = {
+              TableName: TABLE_NAME,
+              Item: {
+                ImageName: { S : srcKey }
+              }
+            }
+            await dynamodbClient.send(new PutItemCommand(imageTableRequestParams))
+            console.log(`File ${srcKey} has been added to ${TABLE_NAME}`)
           }
           // Process the image ......
         } catch (error) {
           console.log(error);
-        }
+        } 
       }
     }
   }
