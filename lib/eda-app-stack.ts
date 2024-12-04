@@ -81,7 +81,12 @@ export class EDAAppStack extends cdk.Stack {
     entry: `${__dirname}/../lambdas/mailer.ts`,
   });
 
-  
+  const rejectMailerFn = new lambdanode.NodejsFunction(this, 'reject-mailer-function', {
+    runtime: lambda.Runtime.NODEJS_18_X,
+    memorySize: 1024,
+    timeout: cdk.Duration.seconds(3),
+    entry: `${__dirname}/../lambdas/rejectMailer.ts`,
+  })
   
      // S3 --> SQS
      imagesBucket.addEventNotification(
@@ -120,6 +125,8 @@ export class EDAAppStack extends cdk.Stack {
       resources: ["*"],
     })
   );
+
+  
   // Output
   
   new cdk.CfnOutput(this, "bucketName", {
