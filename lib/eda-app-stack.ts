@@ -88,6 +88,20 @@ export class EDAAppStack extends cdk.Stack {
     timeout: cdk.Duration.seconds(3),
     entry: `${__dirname}/../lambdas/rejectMailer.ts`,
   })
+
+  const updateTableFn = new lambdanode.NodejsFunction(
+    this,
+    "UpdateTableFn",
+    {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      entry: `${__dirname}/../lambdas/updateTable.ts`,
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 128,
+      environment: {
+        TABLE_NAME: imageTable.tableName
+      }
+    }
+  );
   
      // S3 --> SQS
      imagesBucket.addEventNotification(
@@ -102,6 +116,16 @@ export class EDAAppStack extends cdk.Stack {
     newImageTopic.addSubscription(
       new subs.SqsSubscription(imageProcessQueue)
     )
+
+    newImageTopic.addSubscription(
+      new subs.LambdaSubscription(updateTableFn, {
+        filterPolicy: {
+          metadata_type: sns.SubscriptionFilter.stringFilter({
+            allowlist: ["Caption", "Date", "Photographer"]
+          })
+        }
+      })
+    );
  
  // SQS --> Lambda
   const newImageEventSource = new events.SqsEventSource(imageProcessQueue, {
@@ -123,6 +147,7 @@ export class EDAAppStack extends cdk.Stack {
 
   imagesBucket.grantRead(processImageFn);
   imageTable.grantReadWriteData(processImageFn);
+  imageTable.grantReadWriteData(updateTableFn);
 
   mailerFn.addToRolePolicy(
     new iam.PolicyStatement({
