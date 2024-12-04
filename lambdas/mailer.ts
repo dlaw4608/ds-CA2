@@ -1,4 +1,5 @@
-import { SQSHandler } from "aws-lambda";
+// Changing From SQS to SNS for the mailer function to Confirm Upload of Image to S3
+import { SNSHandler } from "aws-lambda";
 import { SES_EMAIL_FROM, SES_EMAIL_TO, SES_REGION } from "../env";
 import {
   SESClient,
@@ -18,37 +19,41 @@ type ContactDetails = {
   message: string;
 };
 
-const client = new SESClient({ region: SES_REGION});
+const client = new SESClient({ region: SES_REGION });
 
-export const handler: SQSHandler = async (event: any) => {
-  console.log("Event ", JSON.stringify(event));
+export const handler: SNSHandler = async (event) => {
+  console.log("SNS Event: ", JSON.stringify(event));
+
   for (const record of event.Records) {
-    const recordBody = JSON.parse(record.body);
-    const snsMessage = JSON.parse(recordBody.Message);
+    try {
+      const snsMessage = JSON.parse(record.Sns.Message);
 
-    if (snsMessage.Records) {
-      console.log("Record body ", JSON.stringify(snsMessage));
-      for (const messageRecord of snsMessage.Records) {
-        const s3e = messageRecord.s3;
-        const srcBucket = s3e.bucket.name;
-        // Object key may have spaces or unicode non-ASCII characters.
-        const srcKey = decodeURIComponent(s3e.object.key.replace(/\+/g, " "));
-        try {
+      if (snsMessage.Records) {
+        console.log("S3 Event Records: ", JSON.stringify(snsMessage.Records));
+
+        for (const messageRecord of snsMessage.Records) {
+          const s3Event = messageRecord.s3;
+          const srcBucket = s3Event.bucket.name;
+          const srcKey = decodeURIComponent(s3Event.object.key.replace(/\+/g, " "));
+
           const { name, email, message }: ContactDetails = {
             name: "The Photo Album",
             email: SES_EMAIL_FROM,
-            message: `We received your Image. Its URL is s3://${srcBucket}/${srcKey}`,
+            message: `We received your image. Its URL is s3://${srcBucket}/${srcKey}`,
           };
+
           const params = sendEmailParams({ name, email, message });
+
+          // Send email using SES
           await client.send(new SendEmailCommand(params));
-        } catch (error: unknown) {
-          console.log("ERROR is: ", error);
-          // return;
         }
       }
+    } catch (error) {
+      console.error("Error processing SNS message: ", error);
     }
   }
 };
+
 
 function sendEmailParams({ name, email, message }: ContactDetails) {
   const parameters: SendEmailCommandInput = {
