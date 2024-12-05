@@ -1,4 +1,5 @@
 import { DynamoDBClient, UpdateItemCommand, UpdateItemCommandOutput } from "@aws-sdk/client-dynamodb";
+import { Condition } from "aws-cdk-lib/aws-stepfunctions";
 import { SNSHandler } from "aws-lambda";
 
 const dynamodbClient = new DynamoDBClient();
@@ -13,6 +14,7 @@ export const handler: SNSHandler = async (event) => {
                 ImageName: { S: message.id }
             },
             UpdateExpression: `set ${metadataType} = :value`,
+            ConditionExpression: 'attribute_exists(ImageName)',
             ExpressionAttributeValues: {
                 ':value': { S: message.value }
             }
