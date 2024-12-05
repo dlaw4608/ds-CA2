@@ -1,12 +1,12 @@
 /* eslint-disable import/extensions, import/no-absolute-path */
 import { SQSHandler } from "aws-lambda";
-import {PutItemCommand, PutItemCommandInput, DynamoDBClient} from '@aws-sdk/client-dynamodb'
+import {PutItemCommand, PutItemCommandInput, DynamoDBClient, DeleteItemCommand, DeleteItemCommandInput} from '@aws-sdk/client-dynamodb'
 import {
   GetObjectCommand,
   PutObjectCommandInput,
   GetObjectCommandInput,
   S3Client,
-  PutObjectCommand,
+  DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 
 import {
@@ -34,13 +34,34 @@ export const handler: SQSHandler = async (event) => {
         const srcBucket = s3e.bucket.name;
         // Object key may have spaces or unicode non-ASCII characters.
         const srcKey = decodeURIComponent(s3e.object.key.replace(/\+/g, " "));
-        let origimage = null;
+        
+        if (messageRecord.eventName.startsWith("ObjectRemoved")) {
+          console.log(`Object removed: ${srcKey}`);
+
+          try {
+            // Delete the corresponding item from DynamoDB
+            const deleteParams: DeleteItemCommandInput = {
+              TableName: TABLE_NAME,
+              Key: {
+                ImageName: { S: srcKey },
+              },
+            };
+            await dynamodbClient.send(new DeleteItemCommand(deleteParams));
+            console.log(`Deleted item with key ${srcKey} from DynamoDB`);
+          } catch (error) {
+            console.error(`Error deleting item for ${srcKey}:`, error);
+          }
+         } else {     
+          let origimage = null;
+         
         try {
           // Download the image from the S3 source bucket.
           const params: GetObjectCommandInput = {
             Bucket: srcBucket,
             Key: srcKey,
           };
+          
+      
           origimage = await s3.send(new GetObjectCommand(params));
 
           if (!srcKey.endsWith('.jpeg') && !srcKey.endsWith('.png')) {
@@ -67,11 +88,13 @@ export const handler: SQSHandler = async (event) => {
             await dynamodbClient.send(new PutItemCommand(imageTableRequestParams))
             console.log(`File ${srcKey} has been added to ${TABLE_NAME}`)
           }
+          
           // Process the image ......
         } catch (error) {
           console.log(error);
         } 
       }
     }
+  }
   }
 };

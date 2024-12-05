@@ -24,7 +24,7 @@ export class EDAAppStack extends cdk.Stack {
         name: "ImageName",
          type: dynamodb.AttributeType.STRING
        },
-       stream: dynamodb.StreamViewType.NEW_IMAGE
+       stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES
     }
    )
     const imagesBucket = new s3.Bucket(this, "images", {
@@ -89,6 +89,13 @@ export class EDAAppStack extends cdk.Stack {
     entry: `${__dirname}/../lambdas/rejectMailer.ts`,
   })
 
+  const confirmMailerFn = new lambdanode.NodejsFunction(this, 'confirm-mailer-function', {
+    runtime: lambda.Runtime.NODEJS_18_X,
+    memorySize: 1024,
+    timeout: cdk.Duration.seconds(20),
+    entry: `${__dirname}/../lambdas/confirmMailer.ts`,
+  })
+
   const updateTableFn = new lambdanode.NodejsFunction(
     this,
     "UpdateTableFn",
@@ -103,12 +110,18 @@ export class EDAAppStack extends cdk.Stack {
     }
   );
   
+
      // S3 --> SQS
      imagesBucket.addEventNotification(
       s3.EventType.OBJECT_CREATED,
       new s3n.SnsDestination(newImageTopic)
     );
     
+    imagesBucket.addEventNotification(
+      s3.EventType.OBJECT_REMOVED,
+      new s3n.SnsDestination(newImageTopic)
+    );
+
     newImageTopic.addSubscription(
       new subs.LambdaSubscription(mailerFn, {
         filterPolicyWithMessageBody: {
@@ -127,7 +140,7 @@ export class EDAAppStack extends cdk.Stack {
         filterPolicyWithMessageBody: {
           Records: sns.FilterOrPolicy.policy({
             eventName: sns.FilterOrPolicy.filter(sns.SubscriptionFilter.stringFilter({
-              allowlist: ["ObjectCreated:Put"],
+              allowlist: ["ObjectCreated:Put","ObjectRemoved:Delete"],
             })),
           })
         }
@@ -155,16 +168,27 @@ export class EDAAppStack extends cdk.Stack {
     maxBatchingWindow: cdk.Duration.seconds(5),
   });
 
-
+ /* confirmMailerFn.addEventSource(
+    new DynamoEventSource(imageTable, {
+      startingPosition: StartingPosition.LATEST, // Process new items
+    })
+  );
+*/
   processImageFn.addEventSource(newImageEventSource);
   rejectMailerFn.addEventSource(newImageEventSourceDLQ)
-
+  confirmMailerFn.addEventSource(
+    new events.DynamoEventSource(imageTable, {
+      startingPosition: lambda.StartingPosition.LATEST,  
+      retryAttempts: 10
+    })
+  );
 
   // Permissions
 
   imagesBucket.grantRead(processImageFn);
   imageTable.grantReadWriteData(processImageFn);
   imageTable.grantReadWriteData(updateTableFn);
+  imageTable.grantStreamRead(confirmMailerFn);
 
   mailerFn.addToRolePolicy(
     new iam.PolicyStatement({
@@ -200,6 +224,18 @@ export class EDAAppStack extends cdk.Stack {
     })
   )
 
+
+  confirmMailerFn.addToRolePolicy(
+    new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        "ses:SendEmail",
+        "ses:SendRawEmail",
+        "ses:SendTemplatedEmail",
+      ],
+      resources: ["*"],
+    })
+  );
   
   // Output
   
