@@ -9,7 +9,9 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-
+import { StreamViewType } from "aws-cdk-lib/aws-dynamodb";
+import {  DynamoEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
+import { StartingPosition } from "aws-cdk-lib/aws-lambda";
 
 import { Construct } from "constructs";
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
@@ -168,12 +170,8 @@ export class EDAAppStack extends cdk.Stack {
     maxBatchingWindow: cdk.Duration.seconds(5),
   });
 
- /* confirmMailerFn.addEventSource(
-    new DynamoEventSource(imageTable, {
-      startingPosition: StartingPosition.LATEST, // Process new items
-    })
-  );
-*/
+  
+
   processImageFn.addEventSource(newImageEventSource);
   rejectMailerFn.addEventSource(newImageEventSourceDLQ)
   confirmMailerFn.addEventSource(

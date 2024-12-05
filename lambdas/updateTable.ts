@@ -1,5 +1,4 @@
 import { DynamoDBClient, UpdateItemCommand, UpdateItemCommandOutput } from "@aws-sdk/client-dynamodb";
-import { Condition } from "aws-cdk-lib/aws-stepfunctions";
 import { SNSHandler } from "aws-lambda";
 
 const dynamodbClient = new DynamoDBClient();
